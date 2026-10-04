@@ -1,0 +1,96 @@
+# Lint, the published-notebook guard and the offline tests, on every pull request and on every
+# push to master. The tests are the standalone scripts under tests/, run one at a time on the CPU
+# with tiny random models and no network, as the README describes. What cannot run on a GitHub
+# runner is named below with its reason, so nothing is skipped silently.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ruff and the published notebooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: ruff, with the settings of pyproject.toml
+        run: |
+          pip install ruff
+          ruff check .
+      - name: the published notebooks carry no packed code and no outputs
+        run: python sync.py --published
+
+  tests:
+    name: offline tests on the CPU
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: PyTorch and torchvision, the CPU builds
+        # Both from the same index. timm depends on torchvision, and a torchvision from PyPI (a CUDA
+        # build) next to the CPU torch fails at import with "operator torchvision::nms does not exist",
+        # which took every test that imports a transformers model class down with it on the first run.
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -c "import torch, torchvision, torchvision.ops; print(torch.__version__, torchvision.__version__)"
+      - name: the package and what the tests import
+        # Colab ships these, so pyproject.toml does not list them; the tests import them.
+        run: |
+          pip install -e . transformers safetensors psutil timm einops matplotlib
+          python -c "import torch, torchvision, torchvision.ops, transformers, timm; print('imports ok', transformers.__version__)"
+      - name: the tests, one script at a time
+        run: |
+          # tests/_setup.py refuses to start until TMPDIR, TEMP and TMP all point to an existing folder.
+          export TMPDIR="$RUNNER_TEMP/sartransfer-tests" TEMP="$RUNNER_TEMP/sartransfer-tests" TMP="$RUNNER_TEMP/sartransfer-tests"
+          mkdir -p "$TMPDIR"
+
+          # Not run on a GitHub runner, each with its reason. Everything else under tests/ runs, one script
+          # at a time - the notebook dry runs time a stand-in Hub and fail when they share the machine.
+          declare -A SKIP=(
+            [test_coherence]="patches torch.cuda.is_available to True for the notebook's GPU check; PyTorch then asks the driver inside the optimizer, and the runner has no NVIDIA driver"
+            [test_decoder_check]="as test_coherence, the GPU monkeypatch needs an NVIDIA driver"
+            [test_grid_check]="as test_coherence, the GPU monkeypatch needs an NVIDIA driver"
+            [test_notebook01]="the dry run measures the real free space of the temp disk and wants 70 GB"
+          )
+
+          failed=()
+          for f in tests/test_*.py; do
+            t=$(basename "$f" .py)
+            if [[ -v SKIP[$t] ]]; then
+              echo "::notice title=$t not run::${SKIP[$t]}"
+              continue
+            fi
+            echo "::group::$t"
+            start=$SECONDS
+            if timeout 1500 python "$f" > "$TMPDIR/$t.log" 2>&1; then
+              echo "passed in $((SECONDS - start)) s"
+              tail -n 2 "$TMPDIR/$t.log"
+            else
+              echo "FAILED in $((SECONDS - start)) s (exit $?)"
+              tail -n 60 "$TMPDIR/$t.log"
+              failed+=("$t")
+            fi
+            echo "::endgroup::"
+          done
+          if ((${#failed[@]})); then
+            echo "::error::failed - ${failed[*]}"
+            exit 1
+          fi
+          echo "every test that runs here passed, ${#SKIP[@]} not run on this runner (see the notices above)"

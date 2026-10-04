@@ -1,0 +1,59 @@
+# secrets - token files by their extensions (hf_token.txt, token.json, tokens.txt, my.token, .hf_token),
+# never a pattern that matches any extension, so a module such as tokenizer.py or tokens.py is not hidden
+.env
+*.key
+*.token
+.*token
+*token.txt
+*token.json
+*tokens.txt
+*tokens.json
+
+# data & caches (never in git)
+# leading slash = repo root only, so folders under src/ are NOT matched
+/data/
+/datasets/
+/cache/
+/features/
+/checkpoints/
+/stage0/
+*.zip
+*.tif
+*.tiff
+*.png
+!docs/figures/*.png
+*.npy
+*.npz
+*.pt
+*.pth
+*.bin
+*.ckpt
+*.parquet
+*.jsonl
+
+# results: never in git. CSVs and figures live on Drive.
+results/**
+!results/.gitkeep
+
+# python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# local model weights and the Hugging Face cache -- never in git
+/weights/
+*.safetensors
+
+# user screenshots at the repo root -- local only
+/Screenshot*.png

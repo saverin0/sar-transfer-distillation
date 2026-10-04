@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sar-transfer-distillation"
+version = "0.1.0"
+description = "Part four - one student for Sentinel-1, Sentinel-2 and aerial images, distilled from the C-RADIOv4 teacher set with the satellite DINOv3 and a radar-reading teacher."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Colab already ships torch, timm, transformers, numpy, pandas, matplotlib, pillow, psutil,
+# pyarrow, fsspec and requests. The rest is what the Major-TOM reader needs:
+#   rasterio         decodes the GeoTIFF bytes stored in the Major-TOM parquet rows
+#   huggingface_hub  file listings and model weights
+dependencies = [
+    "numpy",
+    "pandas",
+    "pillow",
+    "tqdm",
+    "requests",
+    "pyarrow",
+    "fsspec",
+    "rasterio",
+    "huggingface_hub>=0.23",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+# Vendored code (unmodified copies, their own licence) and the notebooks (their cells import after
+# the set-up code by design and are run by the dry-run tests under tests/) are not linted.
+extend-exclude = ["src/sartransfer/distil/teachers/vendor", "src/sartransfer/models/anyup", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
